@@ -1,0 +1,94 @@
+---
+title: "Compare Species"
+output: html_document
+---
+loading tidyverse package and preventing loading messages
+```{r}
+suppressPackageStartupMessages(
+ library(tidyverse) 
+)
+```
+
+Import new data (possible new species) and master species list (existing species), change "data/compiled_RMN_data.csv" to your new file.
+```{r}
+pos_new_species <- read.csv("data/compiled_RMN_data.csv",
+                            stringsAsFactors = FALSE)
+
+existing_species <- read.csv("data/master_species.csv",
+                            stringsAsFactors = FALSE)
+```
+creating a list of all the characters to remove and naming it rm.vec (remove.vector)
+```{r}
+rm.vec <- paste(
+  "\\([^\\)]+\\)",
+  " nr\\.",
+  " gr\\.",
+  "\\?",
+  "sp\\.",
+  "spp\\.",
+  "cf\\.",
+  "undet\\.", 
+  "undetermined",
+  "complex",
+  "/",
+  sep = "|"
+)
+```
+
+Make all characters lowercase and remove unwanted characters in both files.
+```{r}
+pos_new_species <- pos_new_species %>% 
+  mutate(MACRO_GENSPECIES = tolower(MACRO_GENSPECIES),
+         MACRO_GENSPECIES = str_replace_all(MACRO_GENSPECIES, rm.vec, ""),
+         MACRO_GENSPECIES = trimws(MACRO_GENSPECIES)
+         )
+  
+existing_species <- existing_species %>% 
+  mutate(MACRO_GENSPECIES = tolower(MACRO_GENSPECIES),
+         MACRO_GENSPECIES = str_replace_all(MACRO_GENSPECIES, rm.vec, ""),
+         MACRO_GENSPECIES = trimws(MACRO_GENSPECIES)
+         ) %>% 
+  mutate_if(is.character, tolower)
+```
+
+Creating a variable to hold new species by subtracting any species already on the master species list from the new data, by looking through the MACRO_GENSPECIES column. Then displaying the new species in a table.
+```{r}
+new_species <- anti_join(pos_new_species, existing_species,
+                           by = "MACRO_GENSPECIES")
+
+DT::datatable(new_species)
+```
+Removing duplicate records of new species to display each new species name only once and printing the results.
+```{r}
+not.found.vec <- unique(new_species$MACRO_GENSPECIES)
+not.found.vec
+```
+
+Creating a list of column names to look through in the existing species data to double check that the "new species" aren't just poorly classified or not classified to the fullest extent. Printing out the results without duplicates in a table.
+```{r}
+col.vec <- c("PHYLUM", "CLASS", "ORDER", "FAMILY",
+           "SUBFAMILY", "GENUS", "SPECIES", 
+           "MACRO_GENSPECIES", "FINAL_ID")
+not.found.vec <- gsub(" .*$", "", not.found.vec)
+double_check <- purrr::map_df(col.vec, function(col.i) {
+  sub.df <- existing_species[grepl(paste(not.found.vec, collapse = "|"), existing_species[, col.i]), ]
+  
+}) %>% 
+  unique()
+
+DT::datatable(double_check)
+```
+Creating a csv output for the species found that aren't in the master list.
+```{r}
+write.csv(new_species,
+          "output/newly_found_species.csv",
+          row.names = FALSE)
+```
+
+Creating a csv output for the double check, looking through all taxonomic levels for the classifications not found in the master list.
+```{r}
+write.csv(double_check,
+          "output/double_check.csv",
+          row.names = FALSE)
+```
+
